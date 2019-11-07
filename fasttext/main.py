@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 import numpy as np
 import json
 import time
@@ -212,5 +213,5 @@ scheduler = lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
 
 best_model = train_model(model, criterion, optimizer, scheduler, NUM_EPOCH)
 
-model_name = args.data_name+'_model.pth'
+model_name = 'gimotee'+'_model.pth'
 torch.save(best_model.state_dict(), os.path.join('model',model_name))
