@@ -1,14 +1,12 @@
-
 from pathlib import Path
 import numpy as np
 import json
 import time
 import copy
 import argparse
+import easydict
 
 from sklearn.feature_extraction import FeatureHasher
-
-
 
 import torch
 import torch.nn as nn
@@ -35,8 +33,12 @@ def makedict(sentence):
 
 #feature hashing
 
-test_X = data['test']['test_X'] + data['test']['test_X_bigram']
-train_X = data['train']['train_X'] + data['train']['train_X_bigram']
+test_X=[]
+for i in range(len(data['test']['test_X'])):
+    test_X.append(data['test']['test_X'][i]+ data['test']['test_X_bigram'][i])
+train_X=[]
+for i in range(len(data['train']['train_X'])):
+    train_X.append(data['train']['train_X'][i]+ data['train']['train_X_bigram'][i])    
 
 test_X_dictionary = [makedict(sentence) for sentence in test_X]
 train_X_dictionary = [makedict(sentence) for sentence in train_X]
@@ -47,7 +49,7 @@ Hasher = FeatureHasher(n_features=VOCAB_SIZE).fit(train_X_dictionary)
 
 
 #NN
-
+"""
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--data_name', type = str, help = 'dataset name')
@@ -58,14 +60,24 @@ parser.add_argument('--batch_size', type = int, default = 32, help = 'batch size
 parser.add_argument('--momentum', type = float, default = 0.9, help = 'momentum')
 parser.add_argument('--val_split', type = float, default = 0.2, help = 'val_split')
 
-args = parser.parse_args()
+args = parser.parse_args()"""
+
+args = easydict.EasyDict({
+        "hidden_dim": 10,
+        "num_epoch": 20,
+        "learning_rate": 1e-2,
+        "batch_size": 32,
+        "momentum": 0.9,
+        "val_split": 0.2
+})
+
 
 class TrainDataset(Dataset):
     
     def __init__(self):
 
         self.H = Hasher.transform(train_X_dictionary)
-        self.y_data = torch.from_numpy(np.array(data['train']['train_Y']))
+        self.y_data = torch.from_numpy(np.array(data['train']['train_Y'])).type(torch.long)
         
     def __getitem__(self,index):
         return torch.from_numpy(self.H[index].toarray()[0]), self.y_data[index]
@@ -78,7 +90,7 @@ class TestDataset(Dataset):
     def __init__(self):
 
         self.H = Hasher.transform(test_X_dictionary)
-        self.y_data = torch.from_numpy(np.array(data['test']['test_Y']))
+        self.y_data = torch.from_numpy(np.array(data['test']['test_Y'])).type(torch.long)
         
     def __getitem__(self,index):
         return torch.from_numpy(self.H[index].toarray()[0]), self.y_data[index]
@@ -99,8 +111,8 @@ def split_Data(dataset,val_split,batch_size):
     train_sampler = SubsetRandomSampler(train_indices)
     valid_sampler = SubsetRandomSampler(val_indices)
 
-    train_loader = DataLoader(dataset=dataset, batch_size=batch_size, num_workers=2, sampler = train_sampler)
-    valid_loader = DataLoader(dataset=dataset, batch_size=batch_size, num_workers=2, sampler = valid_sampler)
+    train_loader = DataLoader(dataset=dataset, batch_size=batch_size, num_workers=0, sampler = train_sampler)
+    valid_loader = DataLoader(dataset=dataset, batch_size=batch_size, num_workers=0, sampler = valid_sampler)
 
     dataloaders= {'train':train_loader,'val':valid_loader}
 
