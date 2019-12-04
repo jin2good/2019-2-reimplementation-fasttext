@@ -5,7 +5,9 @@ import json
 import time
 import copy
 import argparse
+from tqdm import tqdm
 import easydict
+
 
 from sklearn.feature_extraction import FeatureHasher
 
@@ -18,51 +20,34 @@ from torch.autograd import Variable
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.data.sampler import SubsetRandomSampler
 
-with open('data.json') as jsonfile:
-    data = json.load(jsonfile)
+from vocabulary import Vocabulary, make_vocabulary
+from dictionary import make_dictionary
 
-#Hashing Trick
+#Loading Data
+print("Loading Data")
+with open('traindata.json') as jsonfile:
+    traindata = json.load(jsonfile)
+    
+with open('testdata.json') as jsonfile:
+    testdata = json.load(jsonfile)
 
-def makedict(sentence):
-    word_dict = {}
-    for word in sentence:
-        if word in word_dict:
-            word_dict[word] += 1
-        else:
-            word_dict[word] = 1
-    return word_dict
+print("Finished Loading Data!")
+print("Making Vocab and Dictionary")
+#Making Vocabulary&Dictionary
+train_vocab = Vocabulary()
+train_vocab = make_vocabulary(traindata['train_X'],train_vocab)
 
-#feature hashing
+train_dict = make_dictionary(traindata['train_X'])
+test_dict = make_dictionary(testdata['test_X'])
 
-test_X=[]
-for i in range(len(data['test']['test_X'])):
-    test_X.append(data['test']['test_X'][i]+ data['test']['test_X_bigram'][i])
-train_X=[]
-for i in range(len(data['train']['train_X'])):
-    train_X.append(data['train']['train_X'][i]+ data['train']['train_X_bigram'][i])    
-
-test_X_dictionary = [makedict(sentence) for sentence in test_X]
-train_X_dictionary = [makedict(sentence) for sentence in train_X]
-
-
-VOCAB_SIZE = min(len(test_X_dictionary),10000000)
-Hasher = FeatureHasher(n_features=VOCAB_SIZE).fit(train_X_dictionary)   
-
-
-#NN
-"""
-parser = argparse.ArgumentParser()
-
-parser.add_argument('--data_name', type = str, help = 'dataset name')
-parser.add_argument('--hidden_dim', type = int, default = 10, help = 'num of hidden nodes')
-parser.add_argument('--num_epoch', type = int, default = 20, help = 'num of epochs')
-parser.add_argument('--learning_rate', type = float, default = 1e-2, help = 'learning rate')
-parser.add_argument('--batch_size', type = int, default = 32, help = 'batch size')
-parser.add_argument('--momentum', type = float, default = 0.9, help = 'momentum')
-parser.add_argument('--val_split', type = float, default = 0.2, help = 'val_split')
-
-args = parser.parse_args()"""
-
+print("Finished Making Vocab and Dict")
+print("Feature Hashing")
+#Feature Hashing
+VOCAB_SIZE = min(train_vocab.size(),10000)
+Hasher = FeatureHasher(n_features=VOCAB_SIZE) #논문에 10M 이라 되어있음
+Hasher.fit(train_dict)
+print("Finished Feature Hashing")
+#Argument Parsing
 args = easydict.EasyDict({
         "hidden_dim": 10,
         "num_epoch": 20,
@@ -72,33 +57,33 @@ args = easydict.EasyDict({
         "val_split": 0.2
 })
 
-
+#Model
 class TrainDataset(Dataset):
     
     def __init__(self):
 
-        self.H = Hasher.transform(train_X_dictionary)
-        self.y_data = torch.from_numpy(np.array(data['train']['train_Y'])).type(torch.long)
+        self.H = Hasher.transform(train_dict)
+        self.y_data = torch.from_numpy(np.array(traindata['train_Y'])).type(torch.long)
         
     def __getitem__(self,index):
         return torch.from_numpy(self.H[index].toarray()[0]), self.y_data[index]
     
     def __len__(self):
         return self.H.shape[0]
-
+    
 class TestDataset(Dataset):
     
     def __init__(self):
 
-        self.H = Hasher.transform(test_X_dictionary)
-        self.y_data = torch.from_numpy(np.array(data['test']['test_Y'])).type(torch.long)
+        self.H = Hasher.transform(test_dict)
+        self.y_data = torch.from_numpy(np.array(testdata['test_Y'])).type(torch.long)
         
     def __getitem__(self,index):
         return torch.from_numpy(self.H[index].toarray()[0]), self.y_data[index]
     
     def __len__(self):
         return self.H.shape[0]  
-
+    
 def split_Data(dataset,val_split,batch_size):
 
     dataset_size = len(dataset)
@@ -119,7 +104,6 @@ def split_Data(dataset,val_split,batch_size):
 
     return dataloaders
 
-
 class TextClassifier(nn.Module):
     def __init__(self,vocab_size,hidden_dim,num_class):
         super(TextClassifier,self).__init__()
@@ -132,7 +116,7 @@ class TextClassifier(nn.Module):
         embedded = self.input_layer(text)
         output = self.hidden_layer(embedded)
         return self.output_layer(output)
-
+    
 def train_model(model, criterion, optimizer, scheduler, num_epochs):
     since = time.time()
     best_model_wts = copy.deepcopy(model.state_dict())
@@ -144,15 +128,18 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs):
 
         for phase in ['train','val']:
             if phase == 'train':
+                print("train phase")
                 model.train()
             else:
+                print("validation phase")
                 model.eval()
 
             running_loss = 0.0
             running_corrects = 0
             count = 0
-
             for inputs,labels in dataloaders[phase]:
+                #now = time.time()
+                #print('{:.0f}m {:.0f}s'.format( (now-since) // 60, (now-since) % 60))
                 count += len(inputs)
                 inputs,labels = inputs.to(device),labels.to(device)
                 inputs,labels = Variable(inputs.float()), Variable(labels)
@@ -197,7 +184,7 @@ def train_model(model, criterion, optimizer, scheduler, num_epochs):
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 HIDDEN_DIM = args.hidden_dim
-NUM_CLASS = len(set(data['test']['test_Y']))
+NUM_CLASS = len(set(testdata['test_Y']))
 NUM_EPOCH = args.num_epoch
 LEARN_RATE = args.learning_rate
 BATCH_SIZE = args.batch_size
@@ -213,5 +200,5 @@ scheduler = lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
 
 best_model = train_model(model, criterion, optimizer, scheduler, NUM_EPOCH)
 
-model_name = 'gimotee'+'_model.pth'
+model_name = 'gimotee_revised' + '_model.pth'
 torch.save(best_model.state_dict(), os.path.join('model',model_name))
