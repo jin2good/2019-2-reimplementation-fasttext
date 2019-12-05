@@ -1,4 +1,3 @@
 # 2019-2-reimplementation
 
-https://github.com/mhjabreel/CharCnn_Keras/tree/master/data/ag_news_csv
-여기서 train.csv 꼭 받기
+data 파일 꼭 드라이브에서 다운받으셈 https://drive.google.com/open?id=1iD5zLLCB9zRWkw7OwfmJ6ZYdBfox9ejd
